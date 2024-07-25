@@ -48,6 +48,7 @@ from .kandinsky2_2 import (
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .kolors import KolorsImg2ImgPipeline, KolorsPipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
+from .lumina import LuminaText2ImgPipeline
 from .pag import (
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
@@ -99,6 +100,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGPipeline),
         ("auraflow", AuraFlowPipeline),
         ("kolors", KolorsPipeline),
+        ("lumina", LuminaText2ImgPipeline),
     ]
 )
 
