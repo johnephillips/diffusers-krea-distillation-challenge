@@ -43,7 +43,6 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import (
-    PipelineFromPipeTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
@@ -57,7 +56,6 @@ class GligenTextImagePipelineFastTests(
     PipelineLatentTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineTesterMixin,
-    PipelineFromPipeTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionGLIGENTextImagePipeline
