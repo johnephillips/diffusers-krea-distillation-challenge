@@ -143,6 +143,7 @@ else:
     )
     _import_structure["pag"].extend(
         [
+            "StableDiffusionControlNetPAGInpaintPipeline",
             "StableDiffusionPAGPipeline",
             "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionXLPAGPipeline",
@@ -527,6 +528,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .musicldm import MusicLDMPipeline
         from .pag import (
+            StableDiffusionControlNetPAGInpaintPipeline,
             StableDiffusionControlNetPAGPipeline,
             StableDiffusionPAGPipeline,
             StableDiffusionXLControlNetPAGPipeline,

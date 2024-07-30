@@ -49,6 +49,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .kolors import KolorsImg2ImgPipeline, KolorsPipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .pag import (
+    StableDiffusionControlNetPAGInpaintPipeline,
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGPipeline,
@@ -128,6 +129,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky", KandinskyInpaintCombinedPipeline),
         ("kandinsky22", KandinskyV22InpaintCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
+        ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
     ]
@@ -939,7 +941,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
-                orig_class_name = config["_class_name"].replace("Pipeline", "PAGPipeline")
+                orig_class_name = orig_class_name.replace("Pipeline", "PAGPipeline")
 
         inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, orig_class_name)
 
