@@ -52,6 +52,7 @@ from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, La
 from .pag import (
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
+    StableDiffusionXLControlNetPAGImg2ImgPipeline,
     StableDiffusionXLControlNetPAGPipeline,
     StableDiffusionXLPAGImg2ImgPipeline,
     StableDiffusionXLPAGInpaintPipeline,
@@ -116,6 +117,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGImg2ImgPipeline),
+        ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGImg2ImgPipeline),
         ("lcm", LatentConsistencyModelImg2ImgPipeline),
         ("kolors", KolorsImg2ImgPipeline),
     ]
