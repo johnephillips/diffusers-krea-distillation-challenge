@@ -33,6 +33,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class PAGMixin:
     r"""Mixin class for [Pertubed Attention Guidance](https://arxiv.org/abs/2403.17377v1)."""
 
+
     def _set_pag_attn_processor(self, pag_applied_layers, do_classifier_free_guidance):
         r"""
         Set the attention processor for the PAG layers.
@@ -84,6 +85,7 @@ class PAGMixin:
 
             for module in target_modules:
                 module.processor = pag_attn_proc
+
 
     def _get_pag_scale(self, t):
         r"""
@@ -186,6 +188,7 @@ class PAGMixin:
 
         self.pag_applied_layers = pag_applied_layers
         self._pag_attn_processors = pag_attn_processors
+
 
     @property
     def pag_scale(self) -> float:
