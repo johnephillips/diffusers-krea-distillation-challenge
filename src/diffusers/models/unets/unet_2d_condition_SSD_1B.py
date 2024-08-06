@@ -49,6 +49,7 @@ from .unet_2d_blocks import (
     get_down_block,
     get_mid_block,
     get_up_block,
+    UNetMidBlock2D
 )
 
 
@@ -383,27 +384,41 @@ class UNet2DConditionModelSSD1B(
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block = get_mid_block(
-            mid_block_type,
-            temb_channels=blocks_time_embed_dim,
+        # self.mid_block = get_mid_block(
+        #     mid_block_type,
+        #     temb_channels=blocks_time_embed_dim,
+        #     in_channels=block_out_channels[-1],
+        #     resnet_eps=norm_eps,
+        #     resnet_act_fn=act_fn,
+        #     resnet_groups=norm_num_groups,
+        #     output_scale_factor=mid_block_scale_factor,
+        #     transformer_layers_per_block=transformer_layers_per_block[-1],
+        #     num_attention_heads=num_attention_heads[-1],
+        #     cross_attention_dim=cross_attention_dim[-1],
+        #     dual_cross_attention=dual_cross_attention,
+        #     use_linear_projection=use_linear_projection,
+        #     mid_block_only_cross_attention=mid_block_only_cross_attention,
+        #     upcast_attention=upcast_attention,
+        #     resnet_time_scale_shift=resnet_time_scale_shift,
+        #     attention_type=attention_type,
+        #     resnet_skip_time_act=resnet_skip_time_act,
+        #     cross_attention_norm=cross_attention_norm,
+        #     attention_head_dim=attention_head_dim[-1],
+        #     dropout=dropout,
+        # )
+        # Hard code the mid block to be one residual network
+        mid_block_type = None
+        self.mid_block = UNetMidBlock2D(
             in_channels=block_out_channels[-1],
+            temb_channels=blocks_time_embed_dim,
+            dropout=dropout,
+            num_layers=0,
             resnet_eps=norm_eps,
             resnet_act_fn=act_fn,
-            resnet_groups=norm_num_groups,
             output_scale_factor=mid_block_scale_factor,
-            transformer_layers_per_block=transformer_layers_per_block[-1],
-            num_attention_heads=num_attention_heads[-1],
-            cross_attention_dim=cross_attention_dim[-1],
-            dual_cross_attention=dual_cross_attention,
-            use_linear_projection=use_linear_projection,
-            mid_block_only_cross_attention=mid_block_only_cross_attention,
-            upcast_attention=upcast_attention,
+            resnet_groups=norm_num_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            attention_type=attention_type,
-            resnet_skip_time_act=resnet_skip_time_act,
-            cross_attention_norm=cross_attention_norm,
-            attention_head_dim=attention_head_dim[-1],
-            dropout=dropout,
+            add_attention=False,
         )
 
         # count how many layers upsample the images
