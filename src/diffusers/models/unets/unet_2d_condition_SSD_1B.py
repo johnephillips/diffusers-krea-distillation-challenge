@@ -348,6 +348,12 @@ class UNet2DConditionModelSSD1B(
         else:
             blocks_time_embed_dim = time_embed_dim
 
+        #raise ValueError(f"{down_block_types=}, {transformer_layers_per_block=}")
+        # Originally: ValueError: down_block_types=['DownBlock2D', 'CrossAttnDownBlock2D', 'CrossAttnDownBlock2D'], transformer_layers_per_block=[1, 2, 10]
+        # NOTE: transformer_layers_per_block being 1 for DownBlock2D means there will be 2 resnet blocks in it
+        transformer_layers_per_block = [1, 2, 4]
+
+
         # down
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
@@ -382,6 +388,9 @@ class UNet2DConditionModelSSD1B(
                 dropout=dropout,
             )
             self.down_blocks.append(down_block)
+
+        # Validate that the self.down_blocks look right
+        # raise ValueError(f"{self.down_blocks=}")
 
         # mid
         # self.mid_block = get_mid_block(
@@ -436,6 +445,11 @@ class UNet2DConditionModelSSD1B(
         )
         only_cross_attention = list(reversed(only_cross_attention))
 
+        #raise ValueError(f"{up_block_types=}, {reversed_layers_per_block=}, {reversed_transformer_layers_per_block=}")
+        # ValueError: up_block_types=['CrossAttnUpBlock2D', 'CrossAttnUpBlock2D', 'UpBlock2D'], reversed_layers_per_block=[2, 2, 2], reversed_transformer_layers_per_block=[4, 2, 1]
+        # Hardcode it to the desired number of layers per block
+        reversed_transformer_layers_per_block = [[4, 4, 10], [2, 1, 1], 1]
+
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
             is_final_block = i == len(block_out_channels) - 1
@@ -480,6 +494,9 @@ class UNet2DConditionModelSSD1B(
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
+
+        # Validate that the self.up_blocks look right
+        # raise ValueError(f"{self.up_blocks=}")
 
         # out
         if norm_num_groups is not None:
