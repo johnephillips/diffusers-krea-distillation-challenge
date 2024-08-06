@@ -45,7 +45,7 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionXLPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionXLPipeline, UNet2DConditionModel, UNet2DConditionModelSSD1B
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
@@ -700,8 +700,8 @@ def main(args):
     teacher_unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
-    # Create a student unet with the same architecture as the teacher and see if it fits in VRAM
-    unet = UNet2DConditionModel.from_pretrained(
+    # Create a student unet from a different class. Currently this is actually the same architecture as the teacher
+    unet = UNet2DConditionModelSSD1B.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
