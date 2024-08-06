@@ -546,6 +546,7 @@ def encode_prompt(batch, text_encoders, tokenizers, proportion_empty_prompts, ca
 
 
 def compute_vae_encodings(batch, vae):
+    #raise ValueError(f"{type(batch)=}, {len(batch)=}")
     images = batch.pop("pixel_values")
     pixel_values = torch.stack(list(images))
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
@@ -938,9 +939,9 @@ def main(args):
         # fingerprint used by the cache for the other processes to load the result
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
-        new_fingerprint_for_vae = Hasher.hash(vae_path)
+        new_fingerprint_for_vae = Hasher.hash(vae_path + str(args.train_batch_size) + str(args.max_train_samples))
         train_dataset_with_embeddings = train_dataset.map(
-            compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint
+            compute_embeddings_fn, batched=True, batch_size=args.train_batch_size,new_fingerprint=new_fingerprint
         )
         train_dataset_with_vae = train_dataset.map(
             compute_vae_encodings_fn,
@@ -948,6 +949,9 @@ def main(args):
             batch_size=args.train_batch_size,
             new_fingerprint=new_fingerprint_for_vae,
         )
+        logger.info(f"{len(train_dataset)=}")
+        logger.info(f"{len(train_dataset_with_vae)=}")
+        logger.info(f"{len(train_dataset_with_embeddings)=}, {len(train_dataset_with_vae.remove_columns(['image', 'text']))=}")
         precomputed_dataset = concatenate_datasets(
             [train_dataset_with_embeddings, train_dataset_with_vae.remove_columns(["image", "text"])], axis=1
         )
