@@ -134,6 +134,13 @@ def import_model_class_from_model_name_or_path(
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
+        "--lambda_out",
+        type=float,
+        default=None,
+        required=True,
+        help="lambda_out is the weight of the output level loss for teacher-student distillation"
+    )
+    parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
         default=None,
@@ -689,6 +696,11 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
+    # Add a teacher unet
+    teacher_unet = UNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+    )
+    # Create a student unet with the same architecture as the teacher and see if it fits in VRAM
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
@@ -697,6 +709,7 @@ def main(args):
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
+    teacher_unet.requires_grad_(False)
     # Set unet as trainable.
     unet.train()
 
@@ -713,6 +726,7 @@ def main(args):
     vae.to(accelerator.device, dtype=torch.float32)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+    teacher_unet.to(accelerator.device, dtype=torch.float32)
 
     # Create EMA for the unet.
     if args.use_ema:
@@ -1056,7 +1070,9 @@ def main(args):
     )
 
     for epoch in range(first_epoch, args.num_train_epochs):
-        train_loss = 0.0
+        train_task_loss = 0.0
+        train_loss_out = 0.0
+        train_total_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Sample noise that we'll add to the latents
@@ -1112,6 +1128,26 @@ def main(args):
                     return_dict=False,
                 )[0]
 
+
+                #if accelerator.is_main_process:
+                with autocast_ctx:
+                    # logger.info(
+                    #     f"{teacher_unet.dtype=}"
+                    #             )
+                    # logger.info(
+                    #     f"{unet.module.dtype=}"
+                    # )
+                    # logger.info(
+                    #     f"{noisy_model_input.dtype=}, {timesteps.dtype=}, {prompt_embeds.dtype=}"
+                    # )
+                    teacher_model_pred = teacher_unet(
+                        noisy_model_input,
+                        timesteps,
+                        prompt_embeds,
+                        added_cond_kwargs=unet_added_conditions,
+                        return_dict=False,
+                    )[0]
+
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
                     # set prediction_type of scheduler if defined
@@ -1129,8 +1165,11 @@ def main(args):
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
+                assert args.snr_gamma is None, "For distillation we aren't using the SNR loss"
                 if args.snr_gamma is None:
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    task_loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    loss_out = F.mse_loss(teacher_model_pred.float(), model_pred.float(), reduction="mean")
+                    total_loss = task_loss + args.lambda_out * loss_out
                 else:
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
@@ -1149,11 +1188,17 @@ def main(args):
                     loss = loss.mean()
 
                 # Gather the losses across all processes for logging (if we use distributed training).
-                avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
-                train_loss += avg_loss.item() / args.gradient_accumulation_steps
+                avg_task_loss = accelerator.gather(task_loss.repeat(args.train_batch_size)).mean()
+                train_task_loss += avg_task_loss.item() / args.gradient_accumulation_steps
+
+                avg_loss_out = accelerator.gather(loss_out.repeat(args.train_batch_size)).mean()
+                train_loss_out += avg_loss_out.item() / args.gradient_accumulation_steps
+
+                avg_total_loss = accelerator.gather(total_loss.repeat(args.train_batch_size)).mean()
+                train_total_loss += avg_total_loss.item() / args.gradient_accumulation_steps
 
                 # Backpropagate
-                accelerator.backward(loss)
+                accelerator.backward(total_loss)
                 if accelerator.sync_gradients:
                     params_to_clip = unet.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
@@ -1167,8 +1212,11 @@ def main(args):
                     ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
-                train_loss = 0.0
+                accelerator.log({"train_task_loss": train_task_loss, "train_loss_out": train_loss_out, "train_total_loss": train_total_loss}, step=global_step)
+                train_task_loss = 0.0
+                train_loss_out = 0.0
+                train_total_loss_out = 0.0
+
 
                 # DeepSpeed requires saving weights on every device; saving weights only on the main process would cause issues.
                 if accelerator.distributed_type == DistributedType.DEEPSPEED or accelerator.is_main_process:
@@ -1197,7 +1245,7 @@ def main(args):
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {"step_total_loss": total_loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
             if global_step >= args.max_train_steps:
