@@ -16,16 +16,16 @@ accelerate launch train_text_to_image_sdxl.py \
   --center_crop \
   --random_flip \
   --proportion_empty_prompts=0.2 \
-  --train_batch_size=1 \
+  --train_batch_size=8 \
   --max_train_steps=10000 \
-  --learning_rate=1e-06 \
+  --learning_rate=1e-05 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --mixed_precision="fp16" \
   --validation_prompt="a cute Sundar Pichai creature" \
   --validation_epochs 5 \
   --checkpointing_steps=5000 \
-  --output_dir="$CHECKPOINT_DIR/sdxl-naruto-model-$timestamp" \
+  --output_dir="$CHECKPOINT_DIR/sdxl-naruto-model-pruned-student-and-teacher-output-loss-$timestamp" \
   --report_to="wandb" \
   --lambda_out=1 \
   #--max_train_steps=10000 \
