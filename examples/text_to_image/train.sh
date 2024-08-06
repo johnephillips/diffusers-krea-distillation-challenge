@@ -4,6 +4,7 @@ export VAE_NAME="madebyollin/sdxl-vae-fp16-fix"
 export DATASET_NAME="lambdalabs/naruto-blip-captions"
 # export TRAIN_DATA_DIR="/blobdata/challenge_data/train"
 # export TRAIN_TEXT_TO_IMAGE_DIR="/home/ubuntu/john-ai-challenge/diffusers-krea-distillation-challenge/examples/text_to_image"
+timestamp=$(date "+%Y.%m.%d-%H.%M.%S")
 
 accelerate launch train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -23,5 +24,5 @@ accelerate launch train_text_to_image_sdxl.py \
   --validation_prompt="a cute Sundar Pichai creature" \
   --validation_epochs 5 \
   --checkpointing_steps=5000 \
-  --output_dir="sdxl-naruto-model" \
+  --output_dir="sdxl-naruto-model-$timestamp" \
   --report_to="wandb" \
