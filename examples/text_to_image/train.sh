@@ -25,9 +25,10 @@ accelerate launch train_text_to_image_sdxl.py \
   --validation_prompt="a cute Sundar Pichai creature" \
   --validation_epochs 5 \
   --checkpointing_steps=5000 \
-  --output_dir="$CHECKPOINT_DIR/sdxl-naruto-model-pruned-student-and-teacher-output-loss-$timestamp" \
+  --output_dir="$CHECKPOINT_DIR/sdxl-naruto-model-pruned-student-all-losses-$timestamp" \
   --report_to="wandb" \
   --lambda_out=1 \
+  --lambda_feat_kd=1 \
   #--max_train_steps=10000 \
   #--checkpointing_steps=5000 \
   #--validation_epochs 5 \

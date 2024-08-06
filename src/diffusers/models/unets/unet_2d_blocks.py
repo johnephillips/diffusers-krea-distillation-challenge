@@ -75,6 +75,7 @@ def get_down_block(
         attention_head_dim = num_attention_heads
 
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
+    assert down_block_type in ["DownBlock2D", "CrossAttnDownBlock2D", "DownEncoderBlock2D"], f"{down_block_type=} I haven't checked distillation training support for this block type"
     if down_block_type == "DownBlock2D":
         return DownBlock2D(
             num_layers=num_layers,
@@ -360,6 +361,7 @@ def get_up_block(
         attention_head_dim = num_attention_heads
 
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
+    assert up_block_type in ["CrossAttnUpBlock2D", "UpDecoderBlock2D", "UpBlock2D"], f"{up_block_type=} I haven't checked distillation training support for this block type"
     if up_block_type == "UpBlock2D":
         return UpBlock2D(
             num_layers=num_layers,
@@ -2494,6 +2496,8 @@ class CrossAttnUpBlock2D(nn.Module):
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
 
+        layer_outputs = []
+
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -2521,6 +2525,7 @@ class CrossAttnUpBlock2D(nn.Module):
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
+                assert False, "I don't think this path is taken for SDXL"
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -2548,6 +2553,7 @@ class CrossAttnUpBlock2D(nn.Module):
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
+                layer_outputs.append(hidden_states)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -2556,10 +2562,15 @@ class CrossAttnUpBlock2D(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
+                layer_outputs.append(hidden_states)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size)
+                layer_outputs.append(hidden_states)
+        
+        # Store layer outputs for optional distillation training
+        self.layer_outputs = layer_outputs
 
         return hidden_states
 
@@ -2633,6 +2644,7 @@ class UpBlock2D(nn.Module):
             and getattr(self, "b1", None)
             and getattr(self, "b2", None)
         )
+        layer_outputs = []
 
         for resnet in self.resnets:
             # pop res hidden states
@@ -2654,6 +2666,7 @@ class UpBlock2D(nn.Module):
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
+                assert False, "I don't think this path is taken for SDXL"
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -2671,10 +2684,15 @@ class UpBlock2D(nn.Module):
                     )
             else:
                 hidden_states = resnet(hidden_states, temb)
+                layer_outputs.append(hidden_states)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size)
+                layer_outputs.append(hidden_states)
+
+        # Store layer outputs for optional distillation training
+        self.layer_outputs = layer_outputs
 
         return hidden_states
 
@@ -2742,12 +2760,18 @@ class UpDecoderBlock2D(nn.Module):
         self.resolution_idx = resolution_idx
 
     def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
+        layer_outputs = []
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb=temb)
+            layer_outputs.append(hidden_states)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states)
+                layer_outputs.append(hidden_states)
+        
+        # Store layer outputs for optional distillation training
+        self.layer_outputs = layer_outputs
 
         return hidden_states
 

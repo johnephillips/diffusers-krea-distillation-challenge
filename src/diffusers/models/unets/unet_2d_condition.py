@@ -66,6 +66,7 @@ class UNet2DConditionOutput(BaseOutput):
     """
 
     sample: torch.Tensor = None
+    all_layer_outputs: Tuple[torch.Tensor] = None
 
 
 class UNet2DConditionModel(
@@ -1096,6 +1097,9 @@ class UNet2DConditionModel(
                 If `return_dict` is True, an [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] is returned,
                 otherwise a `tuple` is returned where the first element is the sample tensor.
         """
+        # Store the output features from each layer for Distillation training
+        # layer_features = []
+
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).
         # However, the upsampling interpolation output size can be forced to fit any upsampling size
@@ -1206,6 +1210,7 @@ class UNet2DConditionModel(
             is_adapter = True
 
         down_block_res_samples = (sample,)
+        all_layer_outputs = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 # For t2i-adapter CrossAttnDownBlock2D
@@ -1227,9 +1232,13 @@ class UNet2DConditionModel(
                 if is_adapter and len(down_intrablock_additional_residuals) > 0:
                     sample += down_intrablock_additional_residuals.pop(0)
 
+            # layer_features.append(sample)
+
             down_block_res_samples += res_samples
+            all_layer_outputs += res_samples
 
         if is_controlnet:
+            assert False, "I don't think this path is taken for SDXL"
             new_down_block_res_samples = ()
 
             for down_block_res_sample, down_block_additional_residual in zip(
@@ -1262,10 +1271,15 @@ class UNet2DConditionModel(
             ):
                 sample += down_intrablock_additional_residuals.pop(0)
 
+            all_layer_outputs += (sample,)
+            #layer_features.append(sample)
+
         if is_controlnet:
+            assert False, "I don't think this path is taken for SDXL"
             sample = sample + mid_block_additional_residual
 
         # 5. up
+        #raise ValueError(self.up_blocks)
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
 
@@ -1296,11 +1310,14 @@ class UNet2DConditionModel(
                     upsample_size=upsample_size,
                 )
 
+            all_layer_outputs += tuple(upsample_block.layer_outputs)
+
         # 6. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
+        all_layer_outputs += (sample,)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
@@ -1309,4 +1326,4 @@ class UNet2DConditionModel(
         if not return_dict:
             return (sample,)
 
-        return UNet2DConditionOutput(sample=sample)
+        return UNet2DConditionOutput(sample=sample, all_layer_outputs=all_layer_outputs)

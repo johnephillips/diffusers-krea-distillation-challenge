@@ -141,6 +141,13 @@ def parse_args(input_args=None):
         help="lambda_out is the weight of the output level loss for teacher-student distillation"
     )
     parser.add_argument(
+        "--lambda_feat_kd",
+        type=float,
+        default=None,
+        required=True,
+        help="lambda_feat_kd is the weight of the feature (layer) level loss for teacher-student distillation"
+    )
+    parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
         default=None,
@@ -1072,6 +1079,7 @@ def main(args):
     for epoch in range(first_epoch, args.num_train_epochs):
         train_task_loss = 0.0
         train_loss_out = 0.0
+        train_loss_all_layer_outputs = 0.0
         train_total_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
@@ -1125,8 +1133,8 @@ def main(args):
                     timesteps,
                     prompt_embeds,
                     added_cond_kwargs=unet_added_conditions,
-                    return_dict=False,
-                )[0]
+                    return_dict=True,
+                )
 
 
                 #if accelerator.is_main_process:
@@ -1145,8 +1153,8 @@ def main(args):
                         timesteps,
                         prompt_embeds,
                         added_cond_kwargs=unet_added_conditions,
-                        return_dict=False,
-                    )[0]
+                        return_dict=True,
+                    )
 
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
@@ -1167,9 +1175,15 @@ def main(args):
 
                 assert args.snr_gamma is None, "For distillation we aren't using the SNR loss"
                 if args.snr_gamma is None:
-                    task_loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                    loss_out = F.mse_loss(teacher_model_pred.float(), model_pred.float(), reduction="mean")
-                    total_loss = task_loss + args.lambda_out * loss_out
+                    task_loss = F.mse_loss(model_pred.sample.float(), target.float(), reduction="mean")
+                    loss_out = F.mse_loss(teacher_model_pred.sample.float(), model_pred.sample.float(), reduction="mean")
+                    assert len(model_pred.all_layer_outputs) == len(teacher_model_pred.all_layer_outputs), "We need supervision for all layer outputs of the student and teacher unets"
+                    with autocast_ctx:
+                        loss_all_layer_outputs = F.mse_loss(teacher_model_pred.all_layer_outputs[0], model_pred.all_layer_outputs[0], reduction="mean")
+                        for i in range(1, len(model_pred.all_layer_outputs)):
+                            loss_all_layer_outputs += F.mse_loss(teacher_model_pred.all_layer_outputs[i], model_pred.all_layer_outputs[i], reduction="mean")
+                        loss_all_layer_outputs /= len(model_pred.all_layer_outputs)
+                    total_loss = task_loss + args.lambda_out * loss_out + args.lambda_feat_kd * loss_all_layer_outputs
                 else:
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
@@ -1194,6 +1208,9 @@ def main(args):
                 avg_loss_out = accelerator.gather(loss_out.repeat(args.train_batch_size)).mean()
                 train_loss_out += avg_loss_out.item() / args.gradient_accumulation_steps
 
+                avg_loss_all_layer_outputs = accelerator.gather(loss_all_layer_outputs.repeat(args.train_batch_size)).mean()
+                train_loss_all_layer_outputs += avg_loss_all_layer_outputs.item() / args.gradient_accumulation_steps
+
                 avg_total_loss = accelerator.gather(total_loss.repeat(args.train_batch_size)).mean()
                 train_total_loss += avg_total_loss.item() / args.gradient_accumulation_steps
 
@@ -1212,9 +1229,10 @@ def main(args):
                     ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_task_loss": train_task_loss, "train_loss_out": train_loss_out, "train_total_loss": train_total_loss}, step=global_step)
+                accelerator.log({"train_task_loss": train_task_loss, "train_loss_out": train_loss_out, "train_loss_all_layer_outputs": train_loss_all_layer_outputs, "train_total_loss": train_total_loss}, step=global_step)
                 train_task_loss = 0.0
                 train_loss_out = 0.0
+                train_loss_all_layer_outputs = 0.0
                 train_total_loss = 0.0
 
 

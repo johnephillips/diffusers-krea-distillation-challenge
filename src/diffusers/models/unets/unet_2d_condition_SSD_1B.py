@@ -67,6 +67,7 @@ class UNet2DConditionSSD1BOutput(BaseOutput):
     """
 
     sample: torch.Tensor = None
+    all_layer_outputs: Tuple[torch.Tensor] = None
 
 
 class UNet2DConditionModelSSD1B(
@@ -1135,6 +1136,8 @@ class UNet2DConditionModelSSD1B(
         # on the fly if necessary.
         default_overall_up_factor = 2**self.num_upsamplers
 
+        all_layer_outputs = []
+
         # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
         forward_upsample_size = False
         upsample_size = None
@@ -1239,6 +1242,7 @@ class UNet2DConditionModelSSD1B(
             is_adapter = True
 
         down_block_res_samples = (sample,)
+        all_layer_outputs = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 # For t2i-adapter CrossAttnDownBlock2D
@@ -1261,6 +1265,7 @@ class UNet2DConditionModelSSD1B(
                     sample += down_intrablock_additional_residuals.pop(0)
 
             down_block_res_samples += res_samples
+            all_layer_outputs += res_samples
 
         if is_controlnet:
             new_down_block_res_samples = ()
@@ -1294,8 +1299,11 @@ class UNet2DConditionModelSSD1B(
                 and sample.shape == down_intrablock_additional_residuals[0].shape
             ):
                 sample += down_intrablock_additional_residuals.pop(0)
+            
+            all_layer_outputs += (sample,)
 
         if is_controlnet:
+            assert False, "I don't think this path is taken for SDXL"
             sample = sample + mid_block_additional_residual
 
         # 5. up
@@ -1328,12 +1336,15 @@ class UNet2DConditionModelSSD1B(
                     res_hidden_states_tuple=res_samples,
                     upsample_size=upsample_size,
                 )
+            
+            all_layer_outputs += tuple(upsample_block.layer_outputs)
 
         # 6. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
+        all_layer_outputs += (sample,)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
@@ -1342,4 +1353,4 @@ class UNet2DConditionModelSSD1B(
         if not return_dict:
             return (sample,)
 
-        return UNet2DConditionSSD1BOutput(sample=sample)
+        return UNet2DConditionSSD1BOutput(sample=sample, all_layer_outputs=all_layer_outputs)
