@@ -1181,12 +1181,12 @@ def main(args):
                 assert args.snr_gamma is None, "For distillation we aren't using the SNR loss"
                 if args.snr_gamma is None:
                     task_loss = F.mse_loss(model_pred.sample.float(), target.float(), reduction="mean")
-                    loss_out = F.mse_loss(teacher_model_pred.sample.float(), model_pred.sample.float(), reduction="mean")
+                    loss_out = F.mse_loss(model_pred.sample.float(), teacher_model_pred.sample.float(), reduction="mean")
                     assert len(model_pred.all_layer_outputs) == len(teacher_model_pred.all_layer_outputs), "We need supervision for all layer outputs of the student and teacher unets"
                     #with autocast_ctx:
-                    loss_all_layer_outputs = F.mse_loss(teacher_model_pred.all_layer_outputs[0], model_pred.all_layer_outputs[0], reduction="mean")
+                    loss_all_layer_outputs = F.mse_loss(model_pred.all_layer_outputs[0], teacher_model_pred.all_layer_outputs[0], reduction="mean")
                     for i in range(1, len(model_pred.all_layer_outputs)):
-                        loss_all_layer_outputs += F.mse_loss(teacher_model_pred.all_layer_outputs[i], model_pred.all_layer_outputs[i], reduction="mean")
+                        loss_all_layer_outputs += F.mse_loss(model_pred.all_layer_outputs[i], teacher_model_pred.all_layer_outputs[i], reduction="mean")
                     loss_all_layer_outputs /= len(model_pred.all_layer_outputs)
                     total_loss = task_loss + args.lambda_out * loss_out + args.lambda_feat_kd * loss_all_layer_outputs
                 else:
