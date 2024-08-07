@@ -211,6 +211,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--validation_prompt",
         type=str,
+        nargs="+", # Accept multiple prompt
         default=None,
         help="A prompt that is used during validation to verify that the model is learning.",
     )
@@ -1001,8 +1002,8 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
+    unet, teacher_unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        unet, teacher_unet, optimizer, train_dataloader, lr_scheduler
     )
 
     if args.use_ema:
@@ -1142,7 +1143,7 @@ def main(args):
 
 
                 #if accelerator.is_main_process:
-                with autocast_ctx:
+                #with autocast_ctx:
                     # logger.info(
                     #     f"{teacher_unet.dtype=}"
                     #             )
@@ -1152,13 +1153,13 @@ def main(args):
                     # logger.info(
                     #     f"{noisy_model_input.dtype=}, {timesteps.dtype=}, {prompt_embeds.dtype=}"
                     # )
-                    teacher_model_pred = teacher_unet(
-                        noisy_model_input,
-                        timesteps,
-                        prompt_embeds,
-                        added_cond_kwargs=unet_added_conditions,
-                        return_dict=True,
-                    )
+                teacher_model_pred = teacher_unet(
+                    noisy_model_input,
+                    timesteps,
+                    prompt_embeds,
+                    added_cond_kwargs=unet_added_conditions,
+                    return_dict=True,
+                )
 
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
@@ -1182,11 +1183,11 @@ def main(args):
                     task_loss = F.mse_loss(model_pred.sample.float(), target.float(), reduction="mean")
                     loss_out = F.mse_loss(teacher_model_pred.sample.float(), model_pred.sample.float(), reduction="mean")
                     assert len(model_pred.all_layer_outputs) == len(teacher_model_pred.all_layer_outputs), "We need supervision for all layer outputs of the student and teacher unets"
-                    with autocast_ctx:
-                        loss_all_layer_outputs = F.mse_loss(teacher_model_pred.all_layer_outputs[0], model_pred.all_layer_outputs[0], reduction="mean")
-                        for i in range(1, len(model_pred.all_layer_outputs)):
-                            loss_all_layer_outputs += F.mse_loss(teacher_model_pred.all_layer_outputs[i], model_pred.all_layer_outputs[i], reduction="mean")
-                        loss_all_layer_outputs /= len(model_pred.all_layer_outputs)
+                    #with autocast_ctx:
+                    loss_all_layer_outputs = F.mse_loss(teacher_model_pred.all_layer_outputs[0], model_pred.all_layer_outputs[0], reduction="mean")
+                    for i in range(1, len(model_pred.all_layer_outputs)):
+                        loss_all_layer_outputs += F.mse_loss(teacher_model_pred.all_layer_outputs[i], model_pred.all_layer_outputs[i], reduction="mean")
+                    loss_all_layer_outputs /= len(model_pred.all_layer_outputs)
                     total_loss = task_loss + args.lambda_out * loss_out + args.lambda_feat_kd * loss_all_layer_outputs
                 else:
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
@@ -1310,7 +1311,7 @@ def main(args):
                         pipeline = StableDiffusionXLPipeline.from_pretrained(
                             args.pretrained_model_name_or_path,
                             vae=vae,
-                            unet=unet_model,
+                            unet=accelerator.unwrap_model(unet_model),
                             revision=args.revision,
                             variant=args.variant,
                             torch_dtype=weight_dtype,
@@ -1324,27 +1325,28 @@ def main(args):
 
                     # run inference
                     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-                    pipeline_args = {"prompt": args.validation_prompt}
+                    for i, prompt in enumerate(args.validation_prompt):
+                        pipeline_args = {"prompt": prompt}
 
-                    with autocast_ctx:
-                        images = [
-                            pipeline(**pipeline_args, generator=generator, num_inference_steps=25).images[0]
-                            for _ in range(args.num_validation_images)
-                        ]
+                        with autocast_ctx:
+                            images = [
+                                pipeline(**pipeline_args, generator=generator, num_inference_steps=25).images[0]
+                                for _ in range(args.num_validation_images)
+                            ]
 
-                    for tracker in accelerator.trackers:
-                        if tracker.name == "tensorboard":
-                            np_images = np.stack([np.asarray(img) for img in images])
-                            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                        if tracker.name == "wandb":
-                            tracker.log(
-                                {
-                                    f"validation_{unet_model_name}": [
-                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                        for i, image in enumerate(images)
-                                    ]
-                                }
-                            )
+                        for tracker in accelerator.trackers:
+                            if tracker.name == "tensorboard":
+                                np_images = np.stack([np.asarray(img) for img in images])
+                                tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                            if tracker.name == "wandb":
+                                tracker.log(
+                                    {
+                                        f"validation_{unet_model_name}_{i}": [
+                                            wandb.Image(image, caption=f"{i}: {prompt}")
+                                            for i, image in enumerate(images)
+                                        ]
+                                    }
+                                )
 
                     del pipeline
                     torch.cuda.empty_cache()
