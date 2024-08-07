@@ -918,7 +918,9 @@ def main(args):
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+            # HACK: don't shuffle so we know the order of the images
+            # dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+            dataset["train"] = dataset["train"].select(range(args.max_train_samples))
         # Set the training transforms
         train_dataset = dataset["train"].with_transform(preprocess_train)
 
